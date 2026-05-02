@@ -13,8 +13,8 @@ export default function BinanceScanner() {
     minTrades: 30000,
     minVol: 30,
     minCap: 400,
-    force: "BNB, SOL",
-    exclude: "XRP, ADA"
+    force: "BTC, ETH, SOL",
+    exclude: "BUSD, DAI"
   });
 
   const [colFilters, setColFilters] = useState({ symbol: '' });
@@ -54,7 +54,6 @@ export default function BinanceScanner() {
         axios.get('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250')
       ]);
 
-      // Mapeamento de Market Cap e Ranking do CoinGecko
       const marketInfoMap = new Map();
       mcapRes.data.forEach(c => {
         marketInfoMap.set(c.symbol.toUpperCase(), {
@@ -86,12 +85,13 @@ export default function BinanceScanner() {
         const base = pair.symbol.replace(/USDT$|USDC$/, "");
         const info = marketInfoMap.get(base) || { cap: 0, rank: '?' };
         const vol24h = parseFloat(pair.quoteVolume);
+        const trades24h = parseInt(pair.count);
 
         let row = {
           symbol: pair.symbol,
           price: parseFloat(pair.lastPrice),
+          trades: trades24h,
           vol: vol24h,
-          trades: parseInt(pair.count),
           cap: info.cap,
           rank: info.rank,
           volCap: info.cap > 0 ? (vol24h / info.cap) * 100 : 0,
@@ -161,14 +161,14 @@ export default function BinanceScanner() {
 
   return (
     <main className="p-6 bg-slate-950 min-h-screen text-slate-200 font-sans">
-      <div className="max-w-[2400px] mx-auto">
+      <div className="max-w-[2600px] mx-auto">
         <div className="flex justify-between items-end mb-8 border-b border-white/5 pb-4">
           <div>
             <h1 className="text-3xl font-black text-white italic tracking-tighter">BINANCE<span className="text-yellow-500">SCANNER</span></h1>
             <p className="text-slate-500 text-[10px] uppercase font-bold tracking-[0.2em]">Crypto Scanner for Binance USDT/USDC pairs with technical indicators</p>
           </div>
           <div className="text-right">
-            <div className="text-[10px] text-slate-500 font-bold uppercase mb-1">Total Listados: {filteredAndSortedData.length}</div>
+            <div className="text-[10px] text-slate-500 font-bold uppercase mb-1">Total Items: {filteredAndSortedData.length}</div>
             {loading && <div className="text-yellow-500 font-mono text-sm animate-pulse flex items-center gap-2">
               <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-yellow-500"></span></span>
               {status}
@@ -179,7 +179,9 @@ export default function BinanceScanner() {
         <div className="grid grid-cols-1 md:grid-cols-6 gap-6 mb-8 bg-slate-900/40 p-6 rounded-3xl border border-white/5 shadow-2xl">
           {Object.keys(globalFilters).map(k => (
             <div key={k}>
-              <label className="block text-[10px] uppercase font-black text-slate-500 mb-2">{k === 'minVol' ? 'Min Vol (M$)' : k === 'minCap' ? 'Min Cap (M$)' : k === 'exclude' ? 'Excluir Moedas' : k === 'force' ? 'Forçar Moedas' : k}</label>
+              <label className="block text-[10px] uppercase font-black text-slate-500 mb-2">
+                {k === 'minVol' ? 'Min Vol (M$)' : k === 'minCap' ? 'Min Cap (M$)' : k === 'exclude' ? 'Exclude Coins' : k === 'force' ? 'Force Coins' : k}
+              </label>
               <input className="w-full bg-slate-800/50 border border-white/5 p-3 rounded-xl text-sm focus:ring-2 focus:ring-yellow-500 outline-none transition-all"
                 type={['force', 'exclude'].includes(k) ? 'text' : 'number'} value={globalFilters[k]}
                 onChange={e => setGlobalFilters({ ...globalFilters, [k]: e.target.value })} />
@@ -195,7 +197,7 @@ export default function BinanceScanner() {
             <thead>
               <tr className="bg-slate-900/80">
                 <th className="p-4 border-b border-white/5 text-slate-500">#</th>
-                <th onClick={() => requestSort('rank')} className="p-4 cursor-pointer hover:bg-slate-800 border-b border-white/5 text-slate-500">RANK</th>
+                <th onClick={() => requestSort('rank')} className="p-4 cursor-pointer hover:bg-slate-800 border-b border-white/5 text-slate-500 text-center">RANK</th>
                 <th onClick={() => requestSort('symbol')} className="p-5 sticky left-0 bg-slate-900 z-30 border-r border-white/5 cursor-pointer hover:bg-slate-800 transition-all">
                   SYMBOL {sortConfig.key === 'symbol' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                   <input onClick={e => e.stopPropagation()} placeholder="Search..." className="block mt-2 w-full bg-black/30 border-none p-2 rounded-lg text-[10px] focus:ring-1 focus:ring-yellow-500"
@@ -203,11 +205,12 @@ export default function BinanceScanner() {
                 </th>
                 <th onClick={() => requestSort('price')} className="p-5 cursor-pointer hover:bg-slate-800 border-b border-white/5">PRICE</th>
                 <th onClick={() => requestSort('cap')} className="p-5 cursor-pointer hover:bg-slate-800 border-b border-white/5 text-center">MARKET CAP</th>
+                <th onClick={() => requestSort('trades')} className="p-5 cursor-pointer hover:bg-slate-800 border-b border-white/5 text-center">TRADES (24H)</th>
                 <th onClick={() => requestSort('vol')} className="p-5 cursor-pointer hover:bg-slate-800 border-b border-white/5 text-center">VOL 24H</th>
                 <th onClick={() => requestSort('volCap')} className="p-5 cursor-pointer hover:bg-slate-800 border-b border-white/5 text-center">VOL/CAP%</th>
                 {INDICATORS.map(ind => TIMEFRAMES.map(tf => (
                   <th key={ind.key + tf} className="p-5 border-l border-white/5 border-b border-white/5 bg-slate-950/30">
-                    <div className="flex flex-col"><span className="text-slate-300 font-bold">{ind.label}</span><span className="text-yellow-500 font-mono text-[9px]">{tf}</span></div>
+                    <div className="flex flex-col text-center"><span className="text-slate-300 font-bold">{ind.label}</span><span className="text-yellow-500 font-mono text-[9px]">{tf}</span></div>
                   </th>
                 )))}
               </tr>
@@ -216,10 +219,11 @@ export default function BinanceScanner() {
               {filteredAndSortedData.map((row, i) => (
                 <tr key={i} className="group hover:bg-white/[0.02] transition-colors">
                   <td className="p-4 text-slate-600 font-mono border-b border-white/5">{i + 1}</td>
-                  <td className="p-4 border-b border-white/5"><span className="bg-slate-800 px-2 py-0.5 rounded text-slate-400 text-[10px]">#{row.rank}</span></td>
+                  <td className="p-4 border-b border-white/5 text-center"><span className="bg-slate-800 px-2 py-0.5 rounded text-slate-400 text-[10px]">#{row.rank}</span></td>
                   <td className="p-5 sticky left-0 bg-slate-950 group-hover:bg-slate-900 z-20 border-r border-white/5 font-black text-yellow-500 shadow-xl">{row.symbol}</td>
                   <td className="p-5 font-mono text-cyan-400 font-bold border-b border-white/5">{row.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                   <td className="p-5 text-slate-300 border-b border-white/5 text-center">${(row.cap / 1000000).toFixed(0)}M</td>
+                  <td className="p-5 text-slate-300 border-b border-white/5 text-center">{row.trades.toLocaleString()}</td>
                   <td className="p-5 text-slate-300 border-b border-white/5 text-center">${(row.vol / 1000000).toFixed(1)}M</td>
                   <td className="p-5 border-b border-white/5 text-center">
                     <span className={`px-2 py-1 rounded-md font-bold ${row.volCap > 15 ? 'bg-orange-500/10 text-orange-500 border border-orange-500/20' : 'text-slate-500'}`}>{row.volCap.toFixed(1)}%</span>
@@ -238,18 +242,18 @@ export default function BinanceScanner() {
             <div>
               <p className="mb-2"><span className="text-yellow-500 font-bold uppercase">Legenda:</span></p>
               <ul className="space-y-1">
-                <li><span className="text-emerald-400 font-bold">VERDE:</span> Valor atual &gt; anterior</li>
-                <li><span className="text-rose-500 font-bold">VERMELHO:</span> Valor atual &lt; anterior</li>
-                <li><span className="text-amber-400">AMARELO:</span> Sem alteração significativa</li>
+                <li><span className="text-emerald-400 font-bold">VERDE:</span> Valor atual &gt; anterior (Bullish)</li>
+                <li><span className="text-rose-500 font-bold">VERMELHO:</span> Valor atual &lt; anterior (Bearish)</li>
+                <li><span className="text-amber-400">AMARELO:</span> Sem alteração/Estável</li>
               </ul>
             </div>
             <div className="text-center self-center">
-              <p className="font-bold text-slate-400 uppercase tracking-widest">Binance Technical Scanner v2.5</p>
-              <p className="mt-1">Powered by Binance & CoinGecko APIs</p>
+              <p className="font-bold text-slate-400 uppercase tracking-widest">Binance Scanner v2.8</p>
+              <p className="mt-1">Technical Indicators & Market Data Aggregator</p>
             </div>
             <div className="text-right">
               <p className="mb-2"><span className="text-yellow-500 font-bold uppercase">Notas:</span></p>
-              <p>O ranking (#) reflete a posição da moeda base no CoinGecko por Capitalização de Mercado.</p>
+              <p>O volume e os trades são baseados nas últimas 24h. Use o scroll lateral para ver todos os indicadores.</p>
             </div>
           </div>
         </footer>
