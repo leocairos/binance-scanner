@@ -14,7 +14,7 @@ export default function BinanceScanner() {
     minVol: 30,
     minCap: 400,
     force: "BTC, ETH, SOL",
-    exclude: "BUSD, DAI"
+    exclude: "USD1, U"
   });
 
   const [colFilters, setColFilters] = useState({ symbol: '' });
@@ -85,12 +85,11 @@ export default function BinanceScanner() {
         const base = pair.symbol.replace(/USDT$|USDC$/, "");
         const info = marketInfoMap.get(base) || { cap: 0, rank: '?' };
         const vol24h = parseFloat(pair.quoteVolume);
-        const trades24h = parseInt(pair.count);
 
         let row = {
           symbol: pair.symbol,
           price: parseFloat(pair.lastPrice),
-          trades: trades24h,
+          trades: parseInt(pair.count),
           vol: vol24h,
           cap: info.cap,
           rank: info.rank,
@@ -104,7 +103,7 @@ export default function BinanceScanner() {
             const c = k.map(d => d.close), h = k.map(d => d.high), l = k.map(d => d.low), v = k.map(d => d.volume);
             const fmt = (arr) => {
               if (!arr || arr.length < 2) return "N/A";
-              return arr.slice(-3).reverse().map(v => (v !== undefined && v !== null) ? v.toFixed(2) : "0.00").join(' | ');
+              return arr.slice(-3).reverse().map(val => (val !== undefined && val !== null) ? val.toFixed(2) : "0.00").join(' | ');
             };
             row.tech[`RSI_${tf}`] = fmt(TI.RSI.calculate({ values: c, period: 14 }));
             row.tech[`MFI_${tf}`] = fmt(TI.MFI.calculate({ high: h, low: l, close: c, volume: v, period: 14 }));
@@ -150,7 +149,7 @@ export default function BinanceScanner() {
     if (curr > prev) color = "text-emerald-400 font-bold";
     else if (curr < prev) color = "text-rose-500 font-bold";
     return (
-      <div className="flex flex-col leading-tight">
+      <div className="flex flex-col leading-tight text-center">
         <span className={color}>{curr.toFixed(2)}</span>
         <span className="text-[9px] text-slate-600 font-mono">{prev.toFixed(2)} | {(parts[2] || 0).toFixed(2)}</span>
       </div>
@@ -161,42 +160,47 @@ export default function BinanceScanner() {
 
   return (
     <main className="p-6 bg-slate-950 min-h-screen text-slate-200 font-sans">
-      <div className="max-w-[2600px] mx-auto">
+      <div className="max-w-[2800px] mx-auto">
         <div className="flex justify-between items-end mb-8 border-b border-white/5 pb-4">
           <div>
             <h1 className="text-3xl font-black text-white italic tracking-tighter">BINANCE<span className="text-yellow-500">SCANNER</span></h1>
-            <p className="text-slate-500 text-[10px] uppercase font-bold tracking-[0.2em]">Crypto Scanner for Binance USDT/USDC pairs with technical indicators</p>
+            <div className="flex items-center gap-3 mt-1">
+              <p className="text-slate-500 text-[10px] uppercase font-bold tracking-[0.2em]">Crypto Scanner for Binance USDT/USDC pairs with technical indicators</p>
+              <a href="https://github.com/leocairos/binance-scanner" target="_blank" rel="noopener noreferrer" className="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-0.5 rounded transition-all">GitHub Repo</a>
+            </div>
           </div>
           <div className="text-right">
-            <div className="text-[10px] text-slate-500 font-bold uppercase mb-1">Total Items: {filteredAndSortedData.length}</div>
-            {loading && <div className="text-yellow-500 font-mono text-sm animate-pulse flex items-center gap-2">
+            <div className="text-[10px] text-slate-500 font-bold uppercase mb-1">Total Listados: {filteredAndSortedData.length}</div>
+            {loading && <div className="text-yellow-500 font-mono text-sm animate-pulse flex items-center gap-2 justify-end">
               <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-yellow-500"></span></span>
               {status}
             </div>}
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-6 gap-6 mb-8 bg-slate-900/40 p-6 rounded-3xl border border-white/5 shadow-2xl">
+        <div className="grid grid-cols-1 md:grid-cols-7 gap-4 mb-8 bg-slate-900/40 p-6 rounded-3xl border border-white/5 shadow-2xl">
           {Object.keys(globalFilters).map(k => (
             <div key={k}>
               <label className="block text-[10px] uppercase font-black text-slate-500 mb-2">
-                {k === 'minVol' ? 'Min Vol (M$)' : k === 'minCap' ? 'Min Cap (M$)' : k === 'exclude' ? 'Exclude Coins' : k === 'force' ? 'Force Coins' : k}
+                {k === 'minVol' ? 'Min Vol (M$)' : k === 'minCap' ? 'Min Cap (M$)' : k === 'exclude' ? 'Excluir Moedas' : k === 'force' ? 'Forçar Moedas' : k}
               </label>
               <input className="w-full bg-slate-800/50 border border-white/5 p-3 rounded-xl text-sm focus:ring-2 focus:ring-yellow-500 outline-none transition-all"
                 type={['force', 'exclude'].includes(k) ? 'text' : 'number'} value={globalFilters[k]}
                 onChange={e => setGlobalFilters({ ...globalFilters, [k]: e.target.value })} />
             </div>
           ))}
-          <button onClick={runScanner} disabled={loading} className="bg-yellow-600 hover:bg-yellow-500 disabled:bg-slate-800 mt-6 rounded-xl font-black text-xs uppercase tracking-widest text-black transition-all active:scale-95">
-            {loading ? "SCANNING..." : "RUN SCANNER"}
-          </button>
+          <div className="md:col-span-1 flex items-end">
+            <button onClick={runScanner} disabled={loading} className="w-full bg-yellow-600 hover:bg-yellow-500 disabled:bg-slate-800 h-[46px] rounded-xl font-black text-xs uppercase tracking-widest text-black transition-all active:scale-95 shadow-lg shadow-yellow-900/20">
+              {loading ? "SCANNING..." : "RUN SCANNER"}
+            </button>
+          </div>
         </div>
 
         <div className="overflow-x-auto border border-white/5 rounded-3xl bg-slate-900/20 shadow-inner">
           <table className="w-full text-left text-[11px] border-separate border-spacing-0">
             <thead>
               <tr className="bg-slate-900/80">
-                <th className="p-4 border-b border-white/5 text-slate-500">#</th>
+                <th className="p-4 border-b border-white/5 text-slate-600">#</th>
                 <th onClick={() => requestSort('rank')} className="p-4 cursor-pointer hover:bg-slate-800 border-b border-white/5 text-slate-500 text-center">RANK</th>
                 <th onClick={() => requestSort('symbol')} className="p-5 sticky left-0 bg-slate-900 z-30 border-r border-white/5 cursor-pointer hover:bg-slate-800 transition-all">
                   SYMBOL {sortConfig.key === 'symbol' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
@@ -229,7 +233,7 @@ export default function BinanceScanner() {
                     <span className={`px-2 py-1 rounded-md font-bold ${row.volCap > 15 ? 'bg-orange-500/10 text-orange-500 border border-orange-500/20' : 'text-slate-500'}`}>{row.volCap.toFixed(1)}%</span>
                   </td>
                   {INDICATORS.map(ind => TIMEFRAMES.map(tf => (
-                    <td key={ind.key + tf} className="p-5 border-l border-white/5 border-b border-white/5 whitespace-nowrap text-center">{renderIndicatorCell(row.tech[`${ind.key}_${tf}`])}</td>
+                    <td key={ind.key + tf} className="p-5 border-l border-white/5 border-b border-white/5 whitespace-nowrap">{renderIndicatorCell(row.tech[`${ind.key}_${tf}`])}</td>
                   )))}
                 </tr>
               ))}
@@ -237,23 +241,23 @@ export default function BinanceScanner() {
           </table>
         </div>
 
-        <footer className="mt-8 p-6 bg-slate-900/50 rounded-3xl border border-white/5 text-[10px] text-slate-500">
+        <footer className="mt-8 p-8 bg-slate-900/50 rounded-3xl border border-white/5 text-[10px] text-slate-500">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             <div>
-              <p className="mb-2"><span className="text-yellow-500 font-bold uppercase">Legenda:</span></p>
+              <p className="mb-2"><span className="text-yellow-500 font-bold uppercase tracking-wider">Legenda de Cores:</span></p>
               <ul className="space-y-1">
-                <li><span className="text-emerald-400 font-bold">VERDE:</span> Valor atual &gt; anterior (Bullish)</li>
-                <li><span className="text-rose-500 font-bold">VERMELHO:</span> Valor atual &lt; anterior (Bearish)</li>
-                <li><span className="text-amber-400">AMARELO:</span> Sem alteração/Estável</li>
+                <li><span className="text-emerald-400 font-bold">VERDE:</span> Valor atual &gt; anterior (Força compradora)</li>
+                <li><span className="text-rose-500 font-bold">VERMELHO:</span> Valor atual &lt; anterior (Pressão vendedora)</li>
+                <li><span className="text-amber-400">AMARELO:</span> Sem alteração de tendência</li>
               </ul>
             </div>
             <div className="text-center self-center">
-              <p className="font-bold text-slate-400 uppercase tracking-widest">Binance Scanner v2.8</p>
-              <p className="mt-1">Technical Indicators & Market Data Aggregator</p>
+              <p className="font-black text-slate-300 uppercase tracking-[0.3em] text-[12px]">Binance Technical Scanner v3.0</p>
+              <p className="mt-2 text-slate-600 font-mono">Consolidating TradingView-level data on one dashboard.</p>
             </div>
             <div className="text-right">
-              <p className="mb-2"><span className="text-yellow-500 font-bold uppercase">Notas:</span></p>
-              <p>O volume e os trades são baseados nas últimas 24h. Use o scroll lateral para ver todos os indicadores.</p>
+              <p className="mb-2"><span className="text-yellow-500 font-bold uppercase tracking-wider">Informações:</span></p>
+              <p className="leading-relaxed">Scanner otimizado para pares USDT/USDC. Dados técnicos baseados nos últimos 150 candles de cada timeframe. <br /> Código fonte disponível em: <a href="https://github.com/leocairos/binance-scanner" className="text-blue-500 hover:underline">github.com/leocairos/binance-scanner</a></p>
             </div>
           </div>
         </footer>
