@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- Fundo com cantos arredondados -->
+  <rect width="100" height="100" rx="20" fill="#F3BA2F"/>
+  
+  <!-- Linhas de Scanner / Radar -->
+  <path d="M20 50 A 30 30 0 0 1 80 50" fill="none" stroke="#000" stroke-width="6" stroke-linecap="round" opacity="0.3">
+    <animate attributeName="opacity" values="0.1;0.5;0.1" dur="2s" repeatCount="indefinite" />
+  </path>
+  <path d="M30 50 A 20 20 0 0 1 70 50" fill="none" stroke="#000" stroke-width="6" stroke-linecap="round" opacity="0.6">
+    <animate attributeName="opacity" values="0.3;1;0.3" dur="2s" repeatCount="indefinite" />
+  </path>
+
+  <!-- Diamante Central -->
+  <path d="M50 30 L65 45 L50 60 L35 45 Z" fill="#000" />
+  <path d="M50 55 L65 70 L50 85 L35 70 Z" fill="#000" />
+</svg>
