@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node /tmp/claude-1000/-home-node-app/a337554e-8b4e-44e9-b178-463e9a19f0ef/scratchpad/verify_futures.js)",
+      "Bash(NODE_PATH=\"/home/node/.npm/_npx/e41f203b7505f1fb/node_modules\" node -e \"require\\('playwright'\\); console.log\\('ok'\\)\")",
+      "Bash(NODE_PATH=\"/home/node/.npm/_npx/e41f203b7505f1fb/node_modules\" node /tmp/claude-1000/-home-node-app/a337554e-8b4e-44e9-b178-463e9a19f0ef/scratchpad/verify_futures.js)",
+      "Bash(apt-get install *)",
+      "Bash(apt-get update *)",
+      "Read(//usr/lib/**)",
+      "Bash(dpkg --print-architecture)",
+      "Bash(curl -sI https://deb.debian.org/debian/dists/bookworm/Release)",
+      "Bash(curl -s https://deb.debian.org/debian/pool/main/n/nspr/)",
+      "Bash(ldd /home/node/.cache/ms-playwright/chromium_headless_shell-1228/chrome-headless-shell-linux64/chrome-headless-shell)",
+      "Bash(curl -s https://deb.debian.org/debian/dists/bookworm/main/binary-amd64/Packages.gz -o Packages.gz)",
+      "Bash(gunzip -f Packages.gz)",
+      "Bash(grep -n \"^Package: libnspr4$\" Packages)",
+      "Bash(export LD_LIBRARY_PATH=\"/tmp/claude-1000/-home-node-app/a337554e-8b4e-44e9-b178-463e9a19f0ef/scratchpad/extracted/usr/lib/x86_64-linux-gnu:/tmp/claude-1000/-home-node-app/a337554e-8b4e-44e9-b178-463e9a19f0ef/scratchpad/extracted/lib/x86_64-linux-gnu\")",
+      "Bash(echo \"exit: $?\")",
+      "Bash(python3 -c ' *)",
+      "Bash(curl -s \"https://api.coingecko.com/api/v3/coins/bitcoin?localization=false&tickers=false&market_data=false&community_data=false&developer_data=false&sparkline=false\" -o /tmp/claude-1000/-home-node-app/a337554e-8b4e-44e9-b178-463e9a19f0ef/scratchpad/btc.json)",
+      "Bash(kill -9 14395 14396 14408)",
+      "Bash(mkdir -p /home/node/app/.claude/skills/verify)",
+      "Edit(/.claude/skills/verify/**)"
+    ],
+    "additionalDirectories": [
+      "/home/node/app/.claude/skills"
+    ]
+  }
+}

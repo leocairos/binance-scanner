@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import axios from 'axios';
 import Link from 'next/link';
 
@@ -19,8 +19,49 @@ export default function BinanceScannerFutures() {
 
   const [colFilters, setColFilters] = useState({ symbol: '' });
   const [sortConfig, setSortConfig] = useState({ key: 'vol', direction: 'desc' });
+  const [detailsCache, setDetailsCache] = useState({});
+  const requestedIdsRef = useRef(new Set());
 
   useEffect(() => { setIsClient(true); }, []);
+
+  const loadDetails = async (cgId) => {
+    if (!cgId || requestedIdsRef.current.has(cgId)) return;
+    requestedIdsRef.current.add(cgId);
+    setDetailsCache(prev => ({ ...prev, [cgId]: { status: 'loading' } }));
+    try {
+      const res = await axios.get(`https://api.coingecko.com/api/v3/coins/${cgId}`, {
+        params: { localization: false, tickers: false, market_data: false, community_data: false, developer_data: false, sparkline: false }
+      });
+      const descRaw = res.data?.description?.en || '';
+      const desc = descRaw.split('. ').slice(0, 2).join('. ').trim() || 'Descrição não disponível.';
+      // A CoinGecko mistura tags de índices/fundos (ex: "GMCI 30 Index", "FTX Holdings") junto com categorias reais de setor.
+      const noiseCategory = /index|holdings|portfolio|coinbase|ftx|multicoin|alameda/i;
+      const categories = (res.data?.categories || []).filter(c => c && !noiseCategory.test(c));
+      const sector = categories.slice(0, 2).join(' / ') || 'N/A';
+      setDetailsCache(prev => ({ ...prev, [cgId]: { status: 'done', desc, sector } }));
+    } catch (e) {
+      setDetailsCache(prev => ({ ...prev, [cgId]: { status: 'error', desc: 'Descrição não disponível.', sector: 'N/A' } }));
+    }
+  };
+
+  // Carrega setor/descrição em segundo plano, com espaçamento entre chamadas para respeitar o rate limit gratuito da CoinGecko.
+  useEffect(() => {
+    const ids = [...new Set(rawData.map(r => r.cgId).filter(Boolean))];
+    if (ids.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      for (const id of ids) {
+        if (cancelled) return;
+        await loadDetails(id);
+        await new Promise(r => setTimeout(r, 1200));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [rawData]);
+
+  const cmcUrl = (row) => row.cgId
+    ? `https://coinmarketcap.com/currencies/${row.cgId}/`
+    : `https://coinmarketcap.com/search/?q=${encodeURIComponent(row.symbol.replace(/USDT$/, ''))}`;
 
   const runScanner = async () => {
     setLoading(true);
@@ -47,7 +88,7 @@ export default function BinanceScannerFutures() {
       const marketMap = new Map();
       mcapData.forEach(c => {
         const sym = c.symbol.toUpperCase();
-        if (!marketMap.has(sym)) marketMap.set(sym, { cap: c.market_cap, rank: c.market_cap_rank });
+        if (!marketMap.has(sym)) marketMap.set(sym, { cap: c.market_cap, rank: c.market_cap_rank, id: c.id, name: c.name });
       });
 
       const forceArr = globalFilters.force.split(',').map(s => s.trim().toUpperCase());
@@ -78,7 +119,9 @@ export default function BinanceScannerFutures() {
           vol: vol24h,
           cap: info.cap,
           rank: info.rank,
-          volCap: info.cap > 0 ? (vol24h / info.cap) * 100 : 0
+          volCap: info.cap > 0 ? (vol24h / info.cap) * 100 : 0,
+          cgId: info.id || null,
+          cgName: info.name || null
         };
       });
       setRawData(results);
@@ -164,8 +207,12 @@ export default function BinanceScannerFutures() {
                 </th>
                 <th onClick={() => requestSort('price')} className="p-4 cursor-pointer border-b border-white/5 sticky left-[270px] z-50 bg-[#1e2329] min-w-[120px] max-w-[120px] border-r border-white/5 text-[#f3ba2f] font-black hover:bg-white/5 transition-colors text-right">Price {sortConfig.key === 'price' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</th>
 
+                <th onClick={() => requestSort('cap')} className="p-4 cursor-pointer border-b border-white/5 text-center min-w-[120px] hover:bg-white/5 transition-colors uppercase text-slate-300">
+                  Market Cap {sortConfig.key === 'cap' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                </th>
+                <th className="p-4 border-b border-white/5 text-center min-w-[140px] uppercase text-slate-300">Setor</th>
+
                 {[
-                  { key: 'cap', label: 'Market Cap' },
                   { key: 'trades', label: 'Trades 24h' },
                   { key: 'vol', label: 'Volume 24h' },
                   { key: 'volCap', label: 'Vol/Cap %' }
@@ -180,17 +227,31 @@ export default function BinanceScannerFutures() {
               {sortedData.map((row, i) => (
                 <tr key={i} className="group hover:bg-white/[0.03] transition-colors border-b border-white/5 last:border-0">
                   <td className="p-4 text-slate-600 font-mono sticky left-0 z-30 bg-[#161a1e] group-hover:bg-[#1e2329] min-w-[50px] border-b border-white/5">{i + 1}</td>
-                  <td className="p-4 text-center sticky left-[50px] z-30 bg-[#161a1e] group-hover:bg-[#1e2329] text-slate-500 font-bold min-w-[70px] border-b border-white/5">#{row.rank}</td>
-                  <td className="p-4 sticky left-[120px] bg-[#161a1e] group-hover:bg-[#1e2329] z-30 border-r border-b border-white/5 min-w-[150px]">
+                  <td className="p-4 text-center sticky left-[50px] z-30 bg-[#161a1e] group-hover:bg-[#1e2329] text-slate-500 font-bold min-w-[70px] border-b border-white/5">
+                    <a href={cmcUrl(row)} target="_blank" rel="noopener noreferrer" title="Ver no CoinMarketCap" className="hover:text-[#f3ba2f] hover:underline underline-offset-2 transition-colors">#{row.rank}</a>
+                  </td>
+                  <td className="p-4 sticky left-[120px] bg-[#161a1e] group-hover:bg-[#1e2329] z-30 hover:z-40 border-r border-b border-white/5 min-w-[150px] relative group/desc overflow-visible" onMouseEnter={() => loadDetails(row.cgId)}>
                     <a href={`https://www.tradingview.com/chart/?symbol=BINANCE:${row.symbol}.P`} target="_blank" rel="noopener noreferrer" className="font-black text-[#f3ba2f] hover:text-white flex flex-col group-hover:underline underline-offset-4 decoration-2">
                       {row.symbol} <span className="text-[7px] font-normal text-slate-500 mt-0.5 uppercase italic tracking-widest">TradingView ↗</span>
                     </a>
+
+                    {row.cgId && (
+                      <div className="absolute left-[105%] top-1/2 -translate-y-1/2 invisible group-hover/desc:visible z-[9999] w-[300px] p-4 bg-[#1e2329] border border-[#f3ba2f]/50 rounded-xl shadow-[0_0_50px_rgba(0,0,0,0.8)] text-white text-[10px] leading-relaxed backdrop-blur-xl pointer-events-none">
+                        <div className="font-black text-[#f3ba2f] border-b border-white/10 mb-2 pb-1 uppercase italic tracking-widest text-[11px]">{row.cgName || row.symbol}</div>
+                        <div className="text-slate-300 normal-case font-normal">
+                          {(!detailsCache[row.cgId] || detailsCache[row.cgId].status === 'loading') ? 'Carregando descrição...' : detailsCache[row.cgId].desc}
+                        </div>
+                      </div>
+                    )}
                   </td>
                   <td className="p-4 font-mono text-cyan-400 font-bold sticky left-[270px] z-30 bg-[#161a1e] group-hover:bg-[#1e2329] border-r border-b border-white/5 text-right min-w-[120px]">
                     {row.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 8 })}
                   </td>
 
                   <td className="p-4 text-slate-400 border-b border-white/5 text-center font-mono">${(row.cap / 1000000).toFixed(0)}M</td>
+                  <td className="p-4 text-slate-400 border-b border-white/5 text-center font-mono text-[10px]">
+                    {!row.cgId ? '-' : (!detailsCache[row.cgId] || detailsCache[row.cgId].status === 'loading') ? '...' : detailsCache[row.cgId].sector}
+                  </td>
                   <td className="p-4 text-slate-400 border-b border-white/5 text-center font-mono">{row.trades.toLocaleString()}</td>
                   <td className="p-4 text-slate-300 border-b border-white/5 text-center font-mono">${(row.vol / 1000000).toFixed(1)}M</td>
                   <td className="p-4 border-b border-white/5 text-center font-black font-mono">
@@ -212,13 +273,15 @@ export default function BinanceScannerFutures() {
               <div className="grid grid-cols-2 gap-2 text-slate-500 font-bold uppercase text-[9px]">
                 <div className="bg-black/20 p-2 rounded border-l-2 border-[#f3ba2f]">Market Cap: Tamanho do Ativo</div>
                 <div className="bg-black/20 p-2 rounded border-l-2 border-[#f3ba2f]">Vol/Cap: Liquidez</div>
+                <div className="bg-black/20 p-2 rounded border-l-2 border-[#f3ba2f]">Setor: Categoria/Classe do Ativo</div>
+                <div className="bg-black/20 p-2 rounded border-l-2 border-[#f3ba2f]">Rank: Clique para abrir no CMC</div>
               </div>
             </div>
 
             <div className="flex flex-col justify-between">
               <div>
                 <h5 className="text-[#f3ba2f] font-bold uppercase tracking-widest mb-3">Informações de API</h5>
-                <p className="leading-relaxed font-medium">Os dados de Preço, Volume e Trades são fornecidos nativamente pela <strong>Binance Futures API (USDT-M, produção)</strong>. A capitalização de mercado e o Ranking Global são sincronizados via <strong>CoinGecko</strong>.</p>
+                <p className="leading-relaxed font-medium">Os dados de Preço, Volume e Trades são fornecidos nativamente pela <strong>Binance Futures API (USDT-M, produção)</strong>. A capitalização de mercado, o Ranking Global, o Setor e a Descrição são sincronizados via <strong>CoinGecko</strong> (carregados progressivamente em segundo plano).</p>
               </div>
               <div className="mt-6 pt-4 border-t border-white/10 text-slate-600 font-black tracking-widest uppercase flex justify-between">
                 <span>Binance Scanner PRO</span>
