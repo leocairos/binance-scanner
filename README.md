@@ -1,8 +1,8 @@
 # 📊 Binance Scanner Pro
 
-**Crypto Scanner for Binance USDT/USDC pairs with technical indicators.**
+**Crypto Scanner for Binance Futures (USDT-M) pairs with technical indicators.**
 
-O **Binance Scanner** é uma aplicação web de alta performance desenvolvida com **Next.js** para traders que precisam monitorar o mercado em tempo real. Ele filtra ativos na Binance baseando-se em volume, capitalização de mercado e volume de negociações, calculando automaticamente 9 indicadores técnicos em 4 timeframes diferentes.
+O **Binance Scanner** é uma aplicação web de alta performance desenvolvida com **Next.js** para traders que precisam monitorar o mercado de futuros em tempo real. Ele filtra contratos perpétuos USDT-M na Binance Futures (produção) baseando-se em volume, capitalização de mercado e volume de negociações, calculando automaticamente 9 indicadores técnicos em 4 timeframes diferentes.
 
 ---
 
@@ -29,7 +29,7 @@ O **Binance Scanner** é uma aplicação web de alta performance desenvolvida co
 - [Tailwind CSS](https://tailwindcss.com/) - Estilização moderna e responsiva.
 - [Axios](https://axios-http.com/) - Cliente HTTP para consumo de APIs.
 - [TechnicalIndicators](https://github.com/anandanand84/technicalindicators) - Biblioteca para cálculos matemáticos de trading.
-- [Binance API](https://binance-docs.github.io/apidocs/spot/en/) - Dados de mercado em tempo real.
+- [Binance Futures API](https://binance-docs.github.io/apidocs/futures/en/) - Dados de mercado em tempo real (USDT-M, produção).
 - [CoinGecko API](https://www.coingecko.com/en/api) - Dados de Capitalização de Mercado.
 
 ---
