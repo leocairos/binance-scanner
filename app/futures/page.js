@@ -20,25 +20,7 @@ export default function BinanceScannerFutures() {
   const [colFilters, setColFilters] = useState({ symbol: '' });
   const [sortConfig, setSortConfig] = useState({ key: 'vol', direction: 'desc' });
 
-  const TIMEFRAMES = ['1h', '4h', '1d', '1w'];
-
   useEffect(() => { setIsClient(true); }, []);
-
-  const fetchKlines = async (symbol, interval) => {
-    try {
-      const res = await axios.get(`https://fapi.binance.com/fapi/v1/klines`, {
-        params: { symbol, interval, limit: 201 }
-      });
-      return res.data.map(d => ({
-        timestamp: d[0],
-        open: parseFloat(d[1]),
-        high: parseFloat(d[2]),
-        low: parseFloat(d[3]),
-        close: parseFloat(d[4]),
-        volume: parseFloat(d[5])
-      }));
-    } catch (e) { return null; }
-  };
 
   const runScanner = async () => {
     setLoading(true);
@@ -84,32 +66,21 @@ export default function BinanceScannerFutures() {
         return meetsCriteria || forceArr.includes(base);
       });
 
-      const results = [];
-      for (let idx = 0; idx < filtered.length; idx++) {
-        const pair = filtered[idx];
-        setStatus(`Analisando (${idx + 1}/${filtered.length}): ${pair.symbol}`);
-
+      const results = filtered.map(pair => {
         const base = pair.symbol.replace(/USDT$/, "");
         const info = marketMap.get(stripMultiplier(base)) || { cap: 0, rank: 9999 };
         const vol24h = parseFloat(pair.quoteVolume);
 
-        let row = {
+        return {
           symbol: pair.symbol,
           price: parseFloat(pair.lastPrice),
           trades: parseInt(pair.count),
           vol: vol24h,
           cap: info.cap,
           rank: info.rank,
-          volCap: info.cap > 0 ? (vol24h / info.cap) * 100 : 0,
-          klines: {}
+          volCap: info.cap > 0 ? (vol24h / info.cap) * 100 : 0
         };
-
-        for (const tf of TIMEFRAMES) {
-          const k = await fetchKlines(pair.symbol, tf);
-          if (k && k.length > 0) row.klines[tf] = k;
-        }
-        results.push(row);
-      }
+      });
       setRawData(results);
       setStatus("");
     } catch (e) {
@@ -138,27 +109,6 @@ export default function BinanceScannerFutures() {
     }
     return items;
   }, [rawData, colFilters, sortConfig]);
-
-  const handleExportJSON = () => {
-    if (sortedData.length === 0) return;
-    const exportPayload = sortedData.map(item => ({
-      symbol: item.symbol,
-      rank: item.rank,
-      current_price: item.price,
-      market_cap: item.cap,
-      volume_24h: item.vol,
-      trades_24h: item.trades,
-      klines_201_periods: item.klines
-    }));
-
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportPayload, null, 2));
-    const downloadAnchorNode = document.createElement('a');
-    downloadAnchorNode.setAttribute("href", dataStr);
-    downloadAnchorNode.setAttribute("download", `binance_scanner_export_201c_${new Date().toISOString().split('T')[0]}.json`);
-    document.body.appendChild(downloadAnchorNode);
-    downloadAnchorNode.click();
-    downloadAnchorNode.remove();
-  };
 
   if (!isClient) return <div className="bg-slate-950 min-h-screen" />;
 
@@ -197,9 +147,6 @@ export default function BinanceScannerFutures() {
           <div className="col-span-2 flex flex-col gap-2 justify-end mt-2 md:mt-0">
             <button onClick={runScanner} disabled={loading} className="w-full bg-[#f3ba2f] hover:bg-[#dca326] disabled:bg-slate-800 disabled:text-slate-500 rounded-lg font-black text-xs uppercase tracking-[0.1em] text-black transition-all active:scale-95 py-2.5 flex items-center justify-center">
               {loading ? "PROCESSANDO..." : "INICIAR SCANNER"}
-            </button>
-            <button onClick={handleExportJSON} disabled={loading || sortedData.length === 0} className="w-full border border-[#f3ba2f]/50 text-[#f3ba2f] hover:bg-[#f3ba2f]/10 disabled:border-slate-800 disabled:text-slate-600 rounded-lg font-black text-xs uppercase tracking-[0.1em] transition-all active:scale-95 py-2.5 flex items-center justify-center">
-              ↓ EXPORTAR DADOS (JSON)
             </button>
           </div>
         </div>
@@ -261,8 +208,7 @@ export default function BinanceScannerFutures() {
           </h4>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
             <div>
-              <h5 className="text-[#f3ba2f] font-bold uppercase tracking-widest mb-3">Lógica e Exportação</h5>
-              <p className="leading-relaxed mb-4 text-slate-400">O botão <span className="text-[#f3ba2f] font-bold">EXPORTAR DADOS</span> permite baixar o histórico bruto de 201 candles em todos os timeframes testados (1h, 4h, 1d, 1w). Ideal para machine learning.</p>
+              <h5 className="text-[#f3ba2f] font-bold uppercase tracking-widest mb-3">Métricas</h5>
               <div className="grid grid-cols-2 gap-2 text-slate-500 font-bold uppercase text-[9px]">
                 <div className="bg-black/20 p-2 rounded border-l-2 border-[#f3ba2f]">Market Cap: Tamanho do Ativo</div>
                 <div className="bg-black/20 p-2 rounded border-l-2 border-[#f3ba2f]">Vol/Cap: Liquidez</div>
@@ -272,7 +218,7 @@ export default function BinanceScannerFutures() {
             <div className="flex flex-col justify-between">
               <div>
                 <h5 className="text-[#f3ba2f] font-bold uppercase tracking-widest mb-3">Informações de API</h5>
-                <p className="leading-relaxed font-medium">Os dados de Preço, Volume e Klines são fornecidos nativamente pela <strong>Binance Futures API (USDT-M, produção)</strong>. A capitalização de mercado e o Ranking Global são sincronizados via <strong>CoinGecko</strong>.</p>
+                <p className="leading-relaxed font-medium">Os dados de Preço, Volume e Trades são fornecidos nativamente pela <strong>Binance Futures API (USDT-M, produção)</strong>. A capitalização de mercado e o Ranking Global são sincronizados via <strong>CoinGecko</strong>.</p>
               </div>
               <div className="mt-6 pt-4 border-t border-white/10 text-slate-600 font-black tracking-widest uppercase flex justify-between">
                 <span>Binance Scanner PRO</span>
