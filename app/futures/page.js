@@ -3,6 +3,25 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import axios from 'axios';
 import Link from 'next/link';
 
+// Cache em nível de módulo: /coins/list cobre ~15k ativos e serve de fallback para símbolos fora do
+// top 500 por market cap, evitando refazer essa busca a cada scan dentro da mesma sessão do navegador.
+let coinsListPromise = null;
+const getCoinsListMap = () => {
+  if (!coinsListPromise) {
+    coinsListPromise = axios.get('https://api.coingecko.com/api/v3/coins/list')
+      .then(res => {
+        const map = new Map();
+        res.data.forEach(c => {
+          const sym = c.symbol.toUpperCase();
+          if (!map.has(sym)) map.set(sym, { id: c.id, name: c.name });
+        });
+        return map;
+      })
+      .catch(() => new Map());
+  }
+  return coinsListPromise;
+};
+
 export default function BinanceScannerFutures() {
   const [isClient, setIsClient] = useState(false);
   const [rawData, setRawData] = useState([]);
@@ -20,14 +39,19 @@ export default function BinanceScannerFutures() {
   const [colFilters, setColFilters] = useState({ symbol: '' });
   const [sortConfig, setSortConfig] = useState({ key: 'vol', direction: 'desc' });
   const [detailsCache, setDetailsCache] = useState({});
-  const requestedIdsRef = useRef(new Set());
+
+  // Fila justa: uma moeda que falha volta para o FIM da fila em vez de bloquear as demais com
+  // retries sequenciais. O endpoint /coins/{id} da CoinGecko é agressivamente rate-limitado no
+  // plano gratuito, e a resposta 429 vem sem headers de CORS — o navegador reporta isso como
+  // "bloqueado por CORS" em vez do status real, então tratamos qualquer falha como transitória.
+  const queueRef = useRef([]);
+  const queuedSetRef = useRef(new Set());
+  const retryCountRef = useRef({});
+  const processingRef = useRef(false);
 
   useEffect(() => { setIsClient(true); }, []);
 
-  const loadDetails = async (cgId) => {
-    if (!cgId || requestedIdsRef.current.has(cgId)) return;
-    requestedIdsRef.current.add(cgId);
-    setDetailsCache(prev => ({ ...prev, [cgId]: { status: 'loading' } }));
+  const fetchCoinDetails = async (cgId) => {
     try {
       const res = await axios.get(`https://api.coingecko.com/api/v3/coins/${cgId}`, {
         params: { localization: false, tickers: false, market_data: false, community_data: false, developer_data: false, sparkline: false }
@@ -39,24 +63,52 @@ export default function BinanceScannerFutures() {
       const categories = (res.data?.categories || []).filter(c => c && !noiseCategory.test(c));
       const sector = categories.slice(0, 2).join(' / ') || 'N/A';
       setDetailsCache(prev => ({ ...prev, [cgId]: { status: 'done', desc, sector } }));
+      return true;
     } catch (e) {
-      setDetailsCache(prev => ({ ...prev, [cgId]: { status: 'error', desc: 'Descrição não disponível.', sector: 'N/A' } }));
+      return false;
     }
   };
 
-  // Carrega setor/descrição em segundo plano, com espaçamento entre chamadas para respeitar o rate limit gratuito da CoinGecko.
+  const processQueue = async () => {
+    if (processingRef.current) return;
+    processingRef.current = true;
+    let consecutiveFailures = 0;
+    try {
+      while (queueRef.current.length > 0) {
+        const cgId = queueRef.current.shift();
+        const ok = await fetchCoinDetails(cgId);
+        if (ok) {
+          consecutiveFailures = 0;
+        } else {
+          consecutiveFailures++;
+          retryCountRef.current[cgId] = (retryCountRef.current[cgId] || 0) + 1;
+          if (retryCountRef.current[cgId] <= 15) {
+            queueRef.current.push(cgId);
+          } else {
+            setDetailsCache(prev => ({ ...prev, [cgId]: { status: 'error', desc: 'Descrição não disponível.', sector: 'N/A' } }));
+          }
+        }
+        // Espaçamento adaptativo: se estamos levando vários 429 seguidos, desacelera mais.
+        await new Promise(r => setTimeout(r, consecutiveFailures >= 2 ? 8000 : 3500));
+      }
+    } finally {
+      processingRef.current = false;
+    }
+  };
+
+  const enqueue = (cgId, priority = false) => {
+    if (!cgId || queuedSetRef.current.has(cgId)) return;
+    queuedSetRef.current.add(cgId);
+    setDetailsCache(prev => (prev[cgId] ? prev : { ...prev, [cgId]: { status: 'loading' } }));
+    if (priority) queueRef.current.unshift(cgId);
+    else queueRef.current.push(cgId);
+    processQueue();
+  };
+
+  // Ao concluir um scan, enfileira todas as moedas para carregar Setor/Descrição em segundo plano.
   useEffect(() => {
     const ids = [...new Set(rawData.map(r => r.cgId).filter(Boolean))];
-    if (ids.length === 0) return;
-    let cancelled = false;
-    (async () => {
-      for (const id of ids) {
-        if (cancelled) return;
-        await loadDetails(id);
-        await new Promise(r => setTimeout(r, 1200));
-      }
-    })();
-    return () => { cancelled = true; };
+    ids.forEach(id => enqueue(id));
   }, [rawData]);
 
   const cmcUrl = (row) => row.cgId
@@ -81,6 +133,9 @@ export default function BinanceScannerFutures() {
       } catch (cgError) {
         console.warn("CoinGecko API indisponível. Filtro de Market Cap desativado nesta busca.");
       }
+
+      // Fallback para símbolos fora do top 500 por market cap, para que Setor/Descrição sejam resolvidos para todos os ativos.
+      const coinsListMap = await getCoinsListMap();
 
       // Contratos futuros usam prefixos multiplicadores (ex: 1000PEPE, 1000SHIB) que não existem no ticker da CoinGecko.
       const stripMultiplier = (base) => base.replace(/^(1000000|100000|10000|1000)/, "");
@@ -109,7 +164,9 @@ export default function BinanceScannerFutures() {
 
       const results = filtered.map(pair => {
         const base = pair.symbol.replace(/USDT$/, "");
-        const info = marketMap.get(stripMultiplier(base)) || { cap: 0, rank: 9999 };
+        const strippedBase = stripMultiplier(base);
+        const info = marketMap.get(strippedBase) || { cap: 0, rank: 9999 };
+        const fallback = !info.id ? coinsListMap.get(strippedBase) : null;
         const vol24h = parseFloat(pair.quoteVolume);
 
         return {
@@ -120,8 +177,8 @@ export default function BinanceScannerFutures() {
           cap: info.cap,
           rank: info.rank,
           volCap: info.cap > 0 ? (vol24h / info.cap) * 100 : 0,
-          cgId: info.id || null,
-          cgName: info.name || null
+          cgId: info.id || fallback?.id || null,
+          cgName: info.name || fallback?.name || null
         };
       });
       setRawData(results);
@@ -132,6 +189,12 @@ export default function BinanceScannerFutures() {
     }
     setLoading(false);
   };
+
+  const sectorProgress = useMemo(() => {
+    const ids = [...new Set(rawData.map(r => r.cgId).filter(Boolean))];
+    const done = ids.filter(id => detailsCache[id] && detailsCache[id].status !== 'loading').length;
+    return { done, total: ids.length };
+  }, [rawData, detailsCache]);
 
   const requestSort = (key) => {
     let direction = 'desc';
@@ -174,6 +237,12 @@ export default function BinanceScannerFutures() {
               <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-yellow-500"></span></span>
               {status}
             </div>}
+            {!loading && sectorProgress.total > 0 && sectorProgress.done < sectorProgress.total && (
+              <div className="text-slate-500 font-mono text-[10px] animate-pulse flex items-center gap-2 uppercase mt-2 justify-start md:justify-end">
+                <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#f3ba2f] opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-[#f3ba2f]"></span></span>
+                Carregando Setor/Descrição: {sectorProgress.done}/{sectorProgress.total} (rate limit CoinGecko, pode levar alguns minutos)
+              </div>
+            )}
           </div>
         </div>
 
@@ -230,7 +299,7 @@ export default function BinanceScannerFutures() {
                   <td className="p-4 text-center sticky left-[50px] z-30 bg-[#161a1e] group-hover:bg-[#1e2329] text-slate-500 font-bold min-w-[70px] border-b border-white/5">
                     <a href={cmcUrl(row)} target="_blank" rel="noopener noreferrer" title="Ver no CoinMarketCap" className="hover:text-[#f3ba2f] hover:underline underline-offset-2 transition-colors">#{row.rank}</a>
                   </td>
-                  <td className="p-4 sticky left-[120px] bg-[#161a1e] group-hover:bg-[#1e2329] z-30 hover:z-40 border-r border-b border-white/5 min-w-[150px] relative group/desc overflow-visible" onMouseEnter={() => loadDetails(row.cgId)}>
+                  <td className="p-4 sticky left-[120px] bg-[#161a1e] group-hover:bg-[#1e2329] z-30 hover:z-40 border-r border-b border-white/5 min-w-[150px] relative group/desc overflow-visible" onMouseEnter={() => enqueue(row.cgId, true)}>
                     <a href={`https://www.tradingview.com/chart/?symbol=BINANCE:${row.symbol}.P`} target="_blank" rel="noopener noreferrer" className="font-black text-[#f3ba2f] hover:text-white flex flex-col group-hover:underline underline-offset-4 decoration-2">
                       {row.symbol} <span className="text-[7px] font-normal text-slate-500 mt-0.5 uppercase italic tracking-widest">TradingView ↗</span>
                     </a>
